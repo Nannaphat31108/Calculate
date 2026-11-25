@@ -26,7 +26,7 @@
   .tab { flex: 1; padding: 12px; border-radius: 10px; border: 2px solid var(--line); background: transparent;
     color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
   .tab.active { border-color: var(--accent); background: var(--accent); color: #fff; }
-  .row { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+  .row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
   label { display: block; font-size: .9rem; color: var(--muted); margin-bottom: 4px; }
   input { width: 100%; padding: 11px 12px; font: inherit; border: 1px solid var(--line); border-radius: 10px;
     background: var(--bg); color: var(--text); }
@@ -53,7 +53,7 @@
   .rates h3 { font-size: 1rem; margin: 0 0 6px; }
   .rates td, .rates th { text-align: left; }
   .rates td:last-child, .rates th:last-child { text-align: right; }
-  @media (max-width: 560px) {
+  @media (max-width: 640px) {
     .row { grid-template-columns: 1fr 1fr; }
     .row button.primary { grid-column: 1 / -1; }
   }
@@ -62,8 +62,8 @@
 <body>
 <div class="wrap">
   <h1>คำนวณราคารับซื้อไม้สัก / ไม้ประดู่</h1>
-  <p class="sub">กรอกขนาดรอบวงเป็นเซนติเมตร ระบบจะหาปริมาตร (ลบ.ม.) และเรตราคาให้อัตโนมัติ<br>
-    ราคาต่อต้น = ปริมาตร × เรตราคา (บาท/ลบ.ม.)</p>
+  <p class="sub">ปริมาตร = รอบวง × รอบวง × ความยาว × 7.96 ÷ 1,000,000 (ลบ.ม.)<br>
+    ราคา = ปริมาตร × จำนวนต้น × เรตราคา (บาท/ลบ.ม.)</p>
 
   <div class="card">
     <div class="tabs">
@@ -72,6 +72,7 @@
     </div>
     <div class="row">
       <div><label for="girth">รอบวง (ซม.)</label><input id="girth" type="number" inputmode="decimal" min="0" placeholder="เช่น 95"></div>
+      <div><label for="len">ความยาว (ม.)</label><input id="len" type="number" inputmode="decimal" min="0" step="0.1" value="6.2"></div>
       <div><label for="qty">จำนวน (ต้น/ท่อน)</label><input id="qty" type="number" inputmode="numeric" min="1" value="1"></div>
       <button class="primary" id="add">+ เพิ่มรายการ</button>
     </div>
@@ -85,7 +86,7 @@
     </div>
     <div class="scroll">
       <table>
-        <thead><tr><th>ชนิด</th><th>รอบวง</th><th>ปริมาตร/ต้น</th><th>เรต (บาท)</th><th>จำนวน</th><th>รวม (บาท)</th><th></th></tr></thead>
+        <thead><tr><th>ชนิด</th><th>รอบวง</th><th>ยาว (ม.)</th><th>ปริมาตร/ต้น</th><th>จำนวน</th><th>ปริมาตรรวม</th><th>เรต (บาท)</th><th>รวม (บาท)</th><th></th></tr></thead>
         <tbody id="list"></tbody>
       </table>
     </div>
@@ -97,28 +98,23 @@
 
   <div class="card">
     <details>
-      <summary>ดูตารางเรตราคาและปริมาตร</summary>
+      <summary>ดูตารางเรตราคา</summary>
       <div class="rates" id="rates"></div>
       <p class="muted" style="font-size:.9rem;margin-bottom:0">
-        * ปริมาตรใช้ค่าของช่วง 10 ซม. ที่ต่ำกว่า เช่น รอบวง 95 ใช้ปริมาตรของ 90<br>
-        * รอบวงต่ำกว่า 80 ซม. (ไม่มีในตาราง) ใช้ปริมาตรประมาณจากสูตร 0.0000492 × รอบวง² ซึ่งตรงกับค่าในตาราง
+        ตัวอย่าง: ไม้สักรอบวง 100 ซม. ยาว 6.2 ม. 32 ต้น<br>
+        100 × 100 × 6.2 × 7.96 ÷ 1,000,000 = 0.493 ลบ.ม. × 32 ต้น = 15.79 ลบ.ม. × 7,000 = 110,548.48 บาท
       </p>
     </details>
   </div>
 </div>
 
 <script>
-// ปริมาตร (ลบ.ม.) ตามรอบวง ใช้เหมือนกันทั้งไม้สักและไม้ประดู่
-const VOLUME = {
-  80: 0.315, 90: 0.399, 100: 0.492, 110: 0.596, 120: 0.709, 130: 0.833, 140: 0.966,
-  150: 1.109, 160: 1.261, 170: 1.424, 180: 1.595, 190: 1.779, 200: 1.971, 210: 2.173, 220: 2.385
-};
-
 // เรตราคา: [รอบวงต่ำสุด, รอบวงสูงสุด, บาท]
 const RATES = {
   teak: [
     [40, 49, 2700], [50, 79, 3700], [80, 89, 4700], [90, 99, 5700],
-    [100, 130, 6700], [131, 150, 8000], [151, 170, 10000], [171, 190, 13000]
+    [100, 109, 7000], [110, 119, 7500], [120, 129, 8000], [130, 139, 9000], [140, 149, 10000],
+    [150, 159, 11000], [160, 169, 12000], [170, 190, 13000]
   ],
   padauk: [
     [70, 79, 5000], [80, 89, 6000], [90, 99, 7000], [100, 109, 8000], [110, 119, 9000],
@@ -128,77 +124,69 @@ const RATES = {
 };
 const NAME = { teak: "ไม้สัก", padauk: "ไม้ประดู่" };
 
-function getVolume(g) {
-  if (g >= 80) {
-    const step = Math.floor(g / 10) * 10;
-    if (step > 220) return null;
-    return { v: VOLUME[step], est: false };
-  }
-  return { v: Math.round(0.0000492 * g * g * 1000) / 1000, est: true };
-}
+// ปริมาตรต่อต้น (ลบ.ม.) = รอบวง(ซม.) × รอบวง × ความยาว(ม.) × 7.96 / 1,000,000
+function getVolume(g, len) { return g * g * len * 7.96 / 1000000; }
 function getRate(type, g) {
   const gi = Math.floor(g);
   const r = RATES[type].find(([lo, hi]) => gi >= lo && gi <= hi);
   return r ? r[2] : null;
 }
-function calc(type, g, qty) {
+function calc(type, g, len, qty) {
   if (!(g > 0)) return { error: "กรุณากรอกรอบวง" };
+  if (!(len > 0)) return { error: "กรุณากรอกความยาว" };
   const rate = getRate(type, g);
   if (rate == null) {
     const list = RATES[type];
     return { error: `${NAME[type]}รับซื้อรอบวง ${list[0][0]}–${list[list.length - 1][1]} ซม. เท่านั้น` };
   }
-  const vol = getVolume(g);
-  if (!vol) return { error: "รอบวงเกินตารางปริมาตร (สูงสุด 220 ซม.)" };
-  const per = vol.v * rate;
-  return { type, g, qty, rate, vol: vol.v, est: vol.est, per, total: per * qty };
+  const vol = getVolume(g, len);
+  const volTotal = vol * qty;
+  return { type, g, len, qty, rate, vol, volTotal, total: volTotal * rate };
 }
 
 const fmt = n => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
 const $ = id => document.getElementById(id);
 let type = "teak";
 let items = [];
-try { items = JSON.parse(localStorage.getItem("wood-items") || "[]"); } catch (e) {}
-function save() { try { localStorage.setItem("wood-items", JSON.stringify(items)); } catch (e) {} }
+try { items = JSON.parse(localStorage.getItem("wood-items-v2") || "[]"); } catch (e) {}
+function save() { try { localStorage.setItem("wood-items-v2", JSON.stringify(items)); } catch (e) {} }
 
 function preview() {
   const g = parseFloat($("girth").value);
+  const len = parseFloat($("len").value);
   const qty = Math.max(1, parseInt($("qty").value) || 1);
   const p = $("preview");
   if (!$("girth").value) { p.className = "preview"; p.textContent = "กรอกรอบวงเพื่อดูราคา"; return null; }
-  const r = calc(type, g, qty);
+  const r = calc(type, g, len, qty);
   if (r.error) { p.className = "preview err"; p.textContent = r.error; return null; }
   p.className = "preview";
-  p.innerHTML = `${NAME[type]} รอบวง <b>${fmt(g)}</b> ซม. → ปริมาตร <b>${r.vol.toFixed(3)}</b> ลบ.ม.${r.est ? '<span class="badge">ประมาณ</span>' : ''}
-    × เรต <b>${fmt(r.rate)}</b> = <b>${fmt(r.per)}</b> บาท/ต้น` +
-    (qty > 1 ? `<br>× ${qty} ต้น = <b style="color:var(--accent)">${fmt(r.total)}</b> บาท` : "");
+  p.innerHTML = `${NAME[type]}: ${fmt(g)} × ${fmt(g)} × ${fmt(len)} × 7.96 ÷ 1,000,000 = <b>${r.vol.toFixed(4)}</b> ลบ.ม./ต้น<br>
+    × ${qty} ต้น = <b>${r.volTotal.toFixed(2)}</b> ลบ.ม. × เรต <b>${fmt(r.rate)}</b> = <b style="color:var(--accent)">${fmt(r.total)}</b> บาท`;
   return r;
 }
 
 function render() {
   const tb = $("list");
   if (!items.length) {
-    tb.innerHTML = `<tr><td colspan="7" class="empty">ยังไม่มีรายการ</td></tr>`;
+    tb.innerHTML = `<tr><td colspan="9" class="empty">ยังไม่มีรายการ</td></tr>`;
   } else {
     tb.innerHTML = items.map((it, i) => `<tr>
-      <td>${NAME[it.type]}</td><td>${fmt(it.g)} ซม.</td>
-      <td>${it.vol.toFixed(3)}${it.est ? '<span class="badge">ประมาณ</span>' : ''}</td>
-      <td>${fmt(it.rate)}</td><td>${it.qty}</td><td><b>${fmt(it.total)}</b></td>
+      <td>${NAME[it.type]}</td><td>${fmt(it.g)} ซม.</td><td>${fmt(it.len)}</td>
+      <td>${it.vol.toFixed(4)}</td><td>${it.qty}</td><td>${it.volTotal.toFixed(2)}</td>
+      <td>${fmt(it.rate)}</td><td><b>${fmt(it.total)}</b></td>
       <td><button class="ghost" data-del="${i}" aria-label="ลบ">✕</button></td></tr>`).join("");
   }
   const sum = items.reduce((s, it) => s + it.total, 0);
   const n = items.reduce((s, it) => s + it.qty, 0);
-  const v = items.reduce((s, it) => s + it.vol * it.qty, 0);
+  const v = items.reduce((s, it) => s + it.volTotal, 0);
   $("sum").textContent = fmt(sum);
-  $("sumInfo").textContent = `${n} ต้น · ${v.toFixed(3)} ลบ.ม.`;
+  $("sumInfo").textContent = `${n} ต้น · ${v.toFixed(2)} ลบ.ม.`;
 }
 
 function renderRates() {
   const rateTable = t => `<div><h3>เรต${NAME[t]} (บาท/ลบ.ม.)</h3><table><tr><th>รอบวง (ซม.)</th><th>ราคา</th></tr>` +
     RATES[t].map(([lo, hi, p]) => `<tr><td>${lo}–${hi}</td><td>${fmt(p)}</td></tr>`).join("") + `</table></div>`;
-  const volTable = `<div><h3>ปริมาตร (ลบ.ม.)</h3><table><tr><th>รอบวง (ซม.)</th><th>ปริมาตร</th></tr>` +
-    Object.entries(VOLUME).map(([g, v]) => `<tr><td>${g}</td><td>${v.toFixed(3)}</td></tr>`).join("") + `</table></div>`;
-  $("rates").innerHTML = rateTable("teak") + rateTable("padauk") + volTable;
+  $("rates").innerHTML = rateTable("teak") + rateTable("padauk");
 }
 
 document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => {
@@ -207,6 +195,7 @@ document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () =>
 }));
 $("girth").addEventListener("input", preview);
 $("qty").addEventListener("input", preview);
+$("len").addEventListener("input", preview);
 function add() {
   const r = preview();
   if (!r) return;
@@ -214,7 +203,7 @@ function add() {
   $("girth").value = ""; $("qty").value = 1; preview(); $("girth").focus();
 }
 $("add").addEventListener("click", add);
-[$("girth"), $("qty")].forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") add(); }));
+[$("girth"), $("len"), $("qty")].forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") add(); }));
 $("list").addEventListener("click", e => {
   const i = e.target.dataset.del;
   if (i != null) { items.splice(+i, 1); save(); render(); }
