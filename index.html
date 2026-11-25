@@ -72,11 +72,11 @@
     </div>
     <div class="row">
       <div><label for="girth">รอบวง (ซม.)</label><input id="girth" type="number" inputmode="decimal" min="0" placeholder="เช่น 95"></div>
-      <div><label for="len">ความยาว (ม.)</label><input id="len" type="number" inputmode="decimal" min="0" step="0.1" value="6.2"></div>
+      <div><label for="len">ความยาว (ม.)</label><input id="len" type="number" inputmode="decimal" min="0" step="0.1" placeholder="เช่น 6.2"></div>
       <div><label for="qty">จำนวน (ต้น/ท่อน)</label><input id="qty" type="number" inputmode="numeric" min="1" value="1"></div>
       <button class="primary" id="add">+ เพิ่มรายการ</button>
     </div>
-    <div class="preview" id="preview">กรอกรอบวงเพื่อดูราคา</div>
+    <div class="preview" id="preview">กรอกรอบวงและความยาวเพื่อดูราคา</div>
   </div>
 
   <div class="card">
@@ -156,7 +156,7 @@ function preview() {
   const len = parseFloat($("len").value);
   const qty = Math.max(1, parseInt($("qty").value) || 1);
   const p = $("preview");
-  if (!$("girth").value) { p.className = "preview"; p.textContent = "กรอกรอบวงเพื่อดูราคา"; return null; }
+  if (!$("girth").value) { p.className = "preview"; p.textContent = "กรอกรอบวงและความยาวเพื่อดูราคา"; return null; }
   const r = calc(type, g, len, qty);
   if (r.error) { p.className = "preview err"; p.textContent = r.error; return null; }
   p.className = "preview";
