@@ -114,10 +114,14 @@
 <body>
 <div class="wrap">
   <div class="card login hidden" id="loginCard">
-    <h2 style="margin-bottom:6px">เข้าสู่ระบบ</h2>
-    <p class="muted" style="margin-top:0;font-size:.95rem">ล็อกอินบัญชีเดียวกันทุกเครื่อง เพื่อดูประวัติร่วมกัน</p>
+    <div class="tabs">
+      <button class="tab active" data-mode="login">เข้าสู่ระบบ</button>
+      <button class="tab" data-mode="signup">สร้างบัญชีใหม่</button>
+    </div>
+    <p class="muted" style="margin-top:0;font-size:.95rem" id="loginHint">ใช้ชื่อผู้ใช้และรหัสผ่านเดิมได้ทุกเครื่อง ประวัติจะตามไปด้วย</p>
     <label for="loginUser">ชื่อผู้ใช้</label><input id="loginUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ภาษาอังกฤษหรือตัวเลข">
     <label for="loginPass">รหัสผ่าน</label><input id="loginPass" type="password" autocomplete="current-password">
+    <div id="pass2Wrap" class="hidden"><label for="loginPass2">ยืนยันรหัสผ่าน</label><input id="loginPass2" type="password" autocomplete="new-password"></div>
     <button class="primary" id="loginBtn">เข้าสู่ระบบ</button>
     <div class="msg" id="loginMsg"></div>
   </div>
@@ -485,8 +489,8 @@ $("importFile").addEventListener("change", async e => {
 });
 
 // ---------- ผูกปุ่ม ----------
-document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+document.querySelectorAll(".tab[data-type]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".tab[data-type]").forEach(x => x.classList.remove("active"));
   b.classList.add("active"); type = b.dataset.type; preview(); $("girth").focus();
 }));
 ["girth", "len", "qty"].forEach(id => $(id).addEventListener("input", preview));
@@ -546,17 +550,54 @@ async function onSignedIn(session) {
 
 if (sb) {
   showApp(false);
+  let mode = "login";
+  const loginMsg = (text, cls) => { $("loginMsg").textContent = text; $("loginMsg").className = "msg " + (cls || ""); };
+  document.querySelectorAll("#loginCard .tab").forEach(t => t.addEventListener("click", () => {
+    mode = t.dataset.mode;
+    document.querySelectorAll("#loginCard .tab").forEach(x => x.classList.toggle("active", x === t));
+    const su = mode === "signup";
+    $("pass2Wrap").classList.toggle("hidden", !su);
+    $("loginBtn").textContent = su ? "สร้างบัญชี" : "เข้าสู่ระบบ";
+    $("loginPass").autocomplete = su ? "new-password" : "current-password";
+    $("loginHint").textContent = su
+      ? "ชื่อผู้ใช้: ภาษาอังกฤษตัวเล็ก ตัวเลข . _ - ยาว 3–30 ตัว · รหัสผ่านอย่างน้อย 6 ตัว · จำไว้ให้ดี ถ้าลืมรหัสผ่านจะกู้คืนเองไม่ได้"
+      : "ใช้ชื่อผู้ใช้และรหัสผ่านเดิมได้ทุกเครื่อง ประวัติจะตามไปด้วย";
+    loginMsg("");
+  }));
+
   $("loginBtn").addEventListener("click", async () => {
+    const user = $("loginUser").value.trim().toLowerCase();
+    const pass = $("loginPass").value;
+    if (!user || !pass) return loginMsg("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน", "err");
+    if (mode === "signup") {
+      if (!/^[a-z0-9._-]{3,30}$/.test(user)) return loginMsg("ชื่อผู้ใช้ใช้ได้เฉพาะภาษาอังกฤษตัวเล็ก ตัวเลข . _ - ยาว 3–30 ตัว", "err");
+      if (pass.length < 6) return loginMsg("รหัสผ่านต้องยาวอย่างน้อย 6 ตัว", "err");
+      if (pass !== $("loginPass2").value) return loginMsg("ยืนยันรหัสผ่านไม่ตรงกัน", "err");
+    }
     const btn = $("loginBtn"); btn.disabled = true;
-    $("loginMsg").className = "msg"; $("loginMsg").textContent = "กำลังเข้าสู่ระบบ...";
-    const user = $("loginUser").value.trim();
-    if (!user || !$("loginPass").value) { btn.disabled = false; $("loginMsg").className = "msg err"; $("loginMsg").textContent = "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"; return; }
-    const { error } = await sb.auth.signInWithPassword({ email: toLoginEmail(user), password: $("loginPass").value });
+    loginMsg(mode === "signup" ? "กำลังสร้างบัญชี..." : "กำลังเข้าสู่ระบบ...");
+    try {
+      if (mode === "signup") {
+        const { data, error } = await sb.auth.signUp({ email: toLoginEmail(user), password: pass, options: { data: { username: user } } });
+        if (error) {
+          const m = (error.message || "").toLowerCase();
+          if (m.includes("already")) loginMsg("ชื่อผู้ใช้นี้มีคนใช้แล้ว ลองชื่ออื่น", "err");
+          else if (m.includes("password")) loginMsg("รหัสผ่านไม่ผ่านเงื่อนไข: " + error.message, "err");
+          else if (m.includes("signup") || m.includes("sign up")) loginMsg("ระบบยังปิดการสร้างบัญชีใหม่อยู่", "err");
+          else loginMsg("สร้างบัญชีไม่สำเร็จ: " + error.message, "err");
+        } else if (!data.session) {
+          // เกิดเมื่อ Supabase ยังเปิด "Confirm email" ไว้ หรือชื่อนี้ถูกใช้แล้ว
+          loginMsg("สร้างบัญชีไม่สำเร็จ: ชื่อผู้ใช้นี้อาจมีคนใช้แล้ว หรือระบบยังเปิดการยืนยันอีเมลอยู่", "err");
+        } else loginMsg("");
+      } else {
+        const { error } = await sb.auth.signInWithPassword({ email: toLoginEmail(user), password: pass });
+        if (error) loginMsg("เข้าสู่ระบบไม่สำเร็จ: ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "err");
+        else loginMsg("");
+      }
+    } catch (e) { loginMsg("เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ต", "err"); }
     btn.disabled = false;
-    if (error) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = "เข้าสู่ระบบไม่สำเร็จ: ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"; }
-    else $("loginMsg").textContent = "";
   });
-  $("loginPass").addEventListener("keydown", e => { if (e.key === "Enter") $("loginBtn").click(); });
+  ["loginUser", "loginPass", "loginPass2"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("loginBtn").click(); }));
   $("logoutBtn").addEventListener("click", async () => {
     if (!confirm("ออกจากระบบ?")) return;
     await sb.auth.signOut();
@@ -569,6 +610,7 @@ if (sb) {
     if (session && !signedIn) { signedIn = true; setTimeout(() => onSignedIn(session), 0); }
     else if (!session && signedIn) {
       signedIn = false; userEmail = ""; history = []; store("wood-cloud-cache-v1", []);
+      draft = { editId: null, info: { date: today() }, items: [] }; saveDraft(); fillForm(); render(); setMsg("");
       $("syncBar").classList.add("hidden"); showApp(false); renderHistory();
     }
   });
