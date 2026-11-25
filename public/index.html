@@ -53,9 +53,29 @@
   .rates h3 { font-size: 1rem; margin: 0 0 6px; }
   .rates td, .rates th { text-align: left; }
   .rates td:last-child, .rates th:last-child { text-align: right; }
+  .form2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .form2 .full { grid-column: 1 / -1; }
+  .row > *, .form2 > *, .filters > * { min-width: 0; }
+  .msg { margin-top: 10px; font-size: .95rem; min-height: 1.5em; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--warn); }
+  .filters { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .stat { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .stat .k { font-size: .85rem; color: var(--muted); } .stat .v { font-size: 1.2rem; font-weight: 700; }
+  .bill { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; }
+  .bill-head { display: flex; justify-content: space-between; gap: 10px; padding: 10px 12px; cursor: pointer; align-items: center; }
+  .bill-head .who { font-weight: 600; }
+  .bill-head .price { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .bill-body { padding: 0 12px 12px; display: none; }
+  .bill.open .bill-body { display: block; }
+  textarea { width: 100%; padding: 11px 12px; font: inherit; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--bg); color: var(--text); resize: vertical; min-height: 60px; }
+  @media print { .no-print { display: none !important; } body { background: #fff; } .card { border: 0; } }
   @media (max-width: 640px) {
     .row { grid-template-columns: 1fr 1fr; }
     .row button.primary { grid-column: 1 / -1; }
+    .form2, .filters { grid-template-columns: 1fr 1fr; }
+    .filters .q { grid-column: 1 / -1; }
   }
 </style>
 </head>
@@ -94,6 +114,24 @@
       <span class="muted" id="sumInfo">0 ต้น · 0.000 ลบ.ม.</span>
       <span>รวมทั้งหมด <span class="big" id="sum">0</span> บาท</span>
     </div>
+    <div class="form2">
+      <div><label for="seller">ชื่อผู้ขาย</label><input id="seller" placeholder="ไม่บังคับ"></div>
+      <div><label for="phone">เบอร์โทร</label><input id="phone" type="tel" placeholder="ไม่บังคับ"></div>
+      <div class="full"><label for="note">หมายเหตุ</label><textarea id="note" placeholder="เช่น ที่อยู่ สถานที่ตัด"></textarea></div>
+      <button class="primary full" id="saveBill">💾 บันทึกบิลลงฐานข้อมูล</button>
+    </div>
+    <div class="msg" id="saveMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>ประวัติการรับซื้อ</h2>
+    <div class="filters">
+      <div class="q"><label for="q">ค้นหา</label><input id="q" placeholder="ชื่อ เบอร์ หรือหมายเหตุ"></div>
+      <div><label for="from">ตั้งแต่วันที่</label><input id="from" type="date"></div>
+      <div><label for="to">ถึงวันที่</label><input id="to" type="date"></div>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div id="bills"><div class="empty">กำลังโหลด...</div></div>
   </div>
 
   <div class="card">
@@ -108,41 +146,9 @@
   </div>
 </div>
 
+<script src="calc.js"></script>
 <script>
-// เรตราคา: [รอบวงต่ำสุด, รอบวงสูงสุด, บาท]
-const RATES = {
-  teak: [
-    [40, 49, 2700], [50, 79, 3700], [80, 89, 4700], [90, 99, 5700],
-    [100, 109, 7000], [110, 119, 7500], [120, 129, 8000], [130, 139, 9000], [140, 149, 10000],
-    [150, 159, 11000], [160, 169, 12000], [170, 190, 13000]
-  ],
-  padauk: [
-    [70, 79, 5000], [80, 89, 6000], [90, 99, 7000], [100, 109, 8000], [110, 119, 9000],
-    [120, 129, 10000], [130, 139, 11000], [140, 149, 12000], [150, 159, 13000],
-    [160, 169, 14000], [170, 179, 15000], [180, 189, 16000]
-  ]
-};
-const NAME = { teak: "ไม้สัก", padauk: "ไม้ประดู่" };
-
-// ปริมาตรต่อต้น (ลบ.ม.) = รอบวง(ซม.) × รอบวง × ความยาว(ม.) × 7.96 / 1,000,000
-function getVolume(g, len) { return g * g * len * 7.96 / 1000000; }
-function getRate(type, g) {
-  const gi = Math.floor(g);
-  const r = RATES[type].find(([lo, hi]) => gi >= lo && gi <= hi);
-  return r ? r[2] : null;
-}
-function calc(type, g, len, qty) {
-  if (!(g > 0)) return { error: "กรุณากรอกรอบวง" };
-  if (!(len > 0)) return { error: "กรุณากรอกความยาว" };
-  const rate = getRate(type, g);
-  if (rate == null) {
-    const list = RATES[type];
-    return { error: `${NAME[type]}รับซื้อรอบวง ${list[0][0]}–${list[list.length - 1][1]} ซม. เท่านั้น` };
-  }
-  const vol = getVolume(g, len);
-  const volTotal = vol * qty;
-  return { type, g, len, qty, rate, vol, volTotal, total: volTotal * rate };
-}
+const { RATES, NAME, calc } = WoodCalc;
 
 const fmt = n => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
 const $ = id => document.getElementById(id);
@@ -210,7 +216,93 @@ $("list").addEventListener("click", e => {
 });
 $("clear").addEventListener("click", () => { if (items.length && confirm("ล้างรายการทั้งหมด?")) { items = []; save(); render(); } });
 
-renderRates(); render();
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dt = d => new Date(d).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+async function api(url, opts) {
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "เชื่อมต่อเซิร์ฟเวอร์ไม่ได้");
+  return data;
+}
+function setMsg(text, cls) { const m = $("saveMsg"); m.textContent = text; m.className = "msg " + (cls || ""); }
+
+$("saveBill").addEventListener("click", async () => {
+  if (!items.length) return setMsg("ยังไม่มีรายการไม้", "err");
+  const btn = $("saveBill"); btn.disabled = true; setMsg("กำลังบันทึก...");
+  try {
+    const bill = await api("/api/bills", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        seller_name: $("seller").value, phone: $("phone").value, note: $("note").value,
+        items: items.map(it => ({ type: it.type, g: it.g, len: it.len, qty: it.qty }))
+      })
+    });
+    setMsg(`บันทึกบิลเลขที่ ${bill.id} แล้ว ยอด ${fmt(bill.total_price)} บาท`, "ok");
+    items = []; save(); render();
+    $("seller").value = ""; $("phone").value = ""; $("note").value = "";
+    loadBills();
+  } catch (e) { setMsg("บันทึกไม่สำเร็จ: " + e.message, "err"); }
+  btn.disabled = false;
+});
+
+let loadTimer;
+async function loadBills() {
+  const qs = new URLSearchParams();
+  if ($("q").value.trim()) qs.set("q", $("q").value.trim());
+  if ($("from").value) qs.set("from", $("from").value);
+  if ($("to").value) qs.set("to", $("to").value);
+  try {
+    const { bills, summary } = await api("/api/bills?" + qs);
+    $("stats").innerHTML = `
+      <div class="stat"><div class="k">จำนวนบิล</div><div class="v">${summary.bills}</div></div>
+      <div class="stat"><div class="k">จำนวนต้น</div><div class="v">${fmt(summary.trees)}</div></div>
+      <div class="stat"><div class="k">ปริมาตรรวม</div><div class="v">${summary.volume.toFixed(2)} ลบ.ม.</div></div>
+      <div class="stat"><div class="k">ยอดเงินรวม</div><div class="v">${fmt(summary.price)} บาท</div></div>`;
+    $("bills").innerHTML = bills.length ? bills.map(b => `
+      <div class="bill" data-id="${b.id}">
+        <div class="bill-head">
+          <div><div class="who">#${b.id} ${esc(b.seller_name) || '<span class="muted">ไม่ระบุชื่อ</span>'}</div>
+            <div class="muted" style="font-size:.85rem">${dt(b.created_at)} · ${b.tree_count} ต้น · ${b.total_volume.toFixed(2)} ลบ.ม.</div></div>
+          <div class="price">${fmt(b.total_price)} ฿</div>
+        </div>
+        <div class="bill-body"></div>
+      </div>`).join("") : `<div class="empty">ยังไม่มีบิล</div>`;
+  } catch (e) {
+    $("stats").innerHTML = "";
+    $("bills").innerHTML = `<div class="empty">โหลดประวัติไม่ได้: ${esc(e.message)}</div>`;
+  }
+}
+["q", "from", "to"].forEach(id => $(id).addEventListener("input", () => { clearTimeout(loadTimer); loadTimer = setTimeout(loadBills, 300); }));
+
+$("bills").addEventListener("click", async e => {
+  const bill = e.target.closest(".bill"); if (!bill) return;
+  const id = bill.dataset.id;
+  if (e.target.dataset.delbill) {
+    if (!confirm(`ลบบิลเลขที่ ${id}? ลบแล้วกู้คืนไม่ได้`)) return;
+    try { await api(`/api/bills/${id}`, { method: "DELETE" }); loadBills(); } catch (err) { alert(err.message); }
+    return;
+  }
+  if (!e.target.closest(".bill-head")) return;
+  if (bill.classList.toggle("open") && !bill.dataset.loaded) {
+    const body = bill.querySelector(".bill-body");
+    body.textContent = "กำลังโหลด...";
+    try {
+      const b = await api(`/api/bills/${id}`);
+      body.innerHTML = `
+        ${b.phone ? `<div>โทร: ${esc(b.phone)}</div>` : ""}
+        ${b.note ? `<div class="muted">หมายเหตุ: ${esc(b.note)}</div>` : ""}
+        <div class="scroll"><table>
+          <tr><th>ชนิด</th><th>รอบวง</th><th>ยาว (ม.)</th><th>ปริมาตร/ต้น</th><th>จำนวน</th><th>ปริมาตรรวม</th><th>เรต</th><th>รวม (บาท)</th></tr>
+          ${b.items.map(it => `<tr><td>${NAME[it.wood_type] || esc(it.wood_type)}</td><td>${fmt(it.girth)}</td><td>${fmt(it.length)}</td>
+            <td>${it.volume.toFixed(4)}</td><td>${it.qty}</td><td>${it.volume_total.toFixed(2)}</td><td>${fmt(it.rate)}</td><td><b>${fmt(it.price)}</b></td></tr>`).join("")}
+        </table></div>
+        <div style="text-align:right;margin-top:8px"><button class="ghost" data-delbill="1">ลบบิลนี้</button></div>`;
+      bill.dataset.loaded = "1";
+    } catch (err) { body.textContent = "โหลดไม่ได้: " + err.message; }
+  }
+});
+
+renderRates(); render(); loadBills();
 </script>
 </body>
 </html>
