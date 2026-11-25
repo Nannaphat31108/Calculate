@@ -75,6 +75,13 @@
   .rates td, .rates th { text-align: left; }
   .rates td:last-child, .rates th:last-child { text-align: right; }
   #printArea { display: none; }
+  .sync { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin-bottom: 14px; font-size: .9rem; }
+  .sync .st { color: var(--muted); } .sync .st.ok { color: var(--ok); } .sync .st.err { color: var(--warn); }
+  .login { max-width: 420px; margin: 8vh auto; }
+  .login input { margin-bottom: 10px; }
+  .login button { width: 100%; }
+  .hidden { display: none !important; }
   @media (max-width: 640px) {
     .row { grid-template-columns: 1fr 1fr; }
     .row button.primary { grid-column: 1 / -1; }
@@ -106,6 +113,20 @@
 </head>
 <body>
 <div class="wrap">
+  <div class="card login hidden" id="loginCard">
+    <h2 style="margin-bottom:6px">เข้าสู่ระบบ</h2>
+    <p class="muted" style="margin-top:0;font-size:.95rem">ล็อกอินบัญชีเดียวกันทุกเครื่อง เพื่อดูประวัติร่วมกัน</p>
+    <label for="loginEmail">อีเมล</label><input id="loginEmail" type="email" autocomplete="username">
+    <label for="loginPass">รหัสผ่าน</label><input id="loginPass" type="password" autocomplete="current-password">
+    <button class="primary" id="loginBtn">เข้าสู่ระบบ</button>
+    <div class="msg" id="loginMsg"></div>
+  </div>
+
+  <div id="app">
+  <div class="sync hidden" id="syncBar">
+    <span class="st" id="syncSt"></span>
+    <span style="display:flex;gap:6px"><button class="ghost" id="refreshBtn">🔄 โหลดใหม่</button><button class="ghost" id="logoutBtn">ออกจากระบบ</button></span>
+  </div>
   <h1>รายการเสนอขายไม้สัก / ไม้ประดู่</h1>
   <p class="sub">ปริมาตร = รอบวง × รอบวง × ความยาว × 7.96 ÷ 1,000,000 (ลบ.ม.)<br>
     ราคา = ปริมาตร × จำนวนต้น × เรตราคา (บาท/ลบ.ม.)</p>
@@ -160,7 +181,7 @@
     <input id="search" placeholder="ค้นหา: ผู้รับซื้อ สวน เจ้าของ เบอร์ หรือเลขที่">
     <div id="history" style="margin-top:12px"></div>
     <div class="backup">
-      <span class="muted" style="font-size:.85rem;flex-basis:100%">ประวัติเก็บไว้ในเครื่องนี้เท่านั้น ควรสำรองไฟล์เก็บไว้เป็นระยะ</span>
+      <span class="muted" style="font-size:.85rem;flex-basis:100%" id="backupNote">ประวัติเก็บไว้ในเครื่องนี้เท่านั้น ควรสำรองไฟล์เก็บไว้เป็นระยะ</span>
       <button class="ghost" id="exportBtn">⬇ สำรองข้อมูล (ดาวน์โหลดไฟล์)</button>
       <button class="ghost" id="importBtn">⬆ นำเข้าไฟล์สำรอง</button>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
@@ -179,9 +200,17 @@
   </div>
 </div>
 
+</div>
 <div id="printArea"></div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.3/dist/umd/supabase.js"></script>
 <script>
+// ---------- ตั้งค่าการซิงก์ข้ามเครื่อง (Supabase) ----------
+// ใส่ Project URL และ anon public key จาก Supabase > Project Settings > API
+// ถ้าเว้นว่างไว้ ประวัติจะเก็บในเครื่องนี้เท่านั้น
+const SUPABASE_URL = "";
+const SUPABASE_ANON_KEY = "";
+
 // เรตราคา: [รอบวงต่ำสุด, รอบวงสูงสุด, บาท/ลบ.ม.]
 const RATES = {
   teak: [
@@ -234,7 +263,37 @@ let draft = load("wood-draft-v3", null);
 if (!draft) draft = { editId: null, info: { date: today() }, items: load("wood-items-v2", []) };
 let history = load("wood-history-v1", []);
 function saveDraft() { store("wood-draft-v3", draft); }
-function saveHistory() { return store("wood-history-v1", history); }
+
+// ---------- ที่เก็บประวัติ: ในเครื่อง หรือ Supabase ----------
+let sb = null;
+if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+  if (window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  else alert("โหลดระบบซิงก์ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้าใหม่");
+}
+const HKEY = () => sb ? "wood-cloud-cache-v1" : "wood-history-v1";
+function cacheHistory() { store(HKEY(), history); }
+const toRow = h => ({ id: h.id, no: h.no, info: h.info, items: h.items, totals: h.totals, created_at: h.createdAt, updated_at: h.updatedAt });
+const fromRow = r => ({ id: r.id, no: r.no, info: r.info || {}, items: r.items || [], totals: r.totals || {}, createdAt: r.created_at, updatedAt: r.updated_at });
+
+async function putRecords(recs) {
+  if (!sb) { history = [...recs, ...history.filter(h => !recs.some(r => r.id === h.id))]; if (!store("wood-history-v1", history)) throw new Error("เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล"); return; }
+  const { error } = await sb.from("offers").upsert(recs.map(toRow));
+  if (error) throw new Error(error.message);
+}
+async function deleteRecord(id) {
+  if (!sb) return;
+  const { error } = await sb.from("offers").delete().eq("id", id);
+  if (error) throw new Error(error.message);
+}
+function setSync(text, cls) { const el = $("syncSt"); el.textContent = text; el.className = "st " + (cls || ""); }
+async function fetchHistory(quiet) {
+  if (!sb) return;
+  if (!quiet) setSync("กำลังโหลดประวัติ...");
+  const { data, error } = await sb.from("offers").select("*").order("no", { ascending: false });
+  if (error) { setSync("โหลดไม่สำเร็จ: " + error.message, "err"); throw new Error(error.message); }
+  history = data.map(fromRow); cacheHistory(); renderHistory();
+  setSync(`☁️ ซิงก์แล้ว · ${userEmail}`, "ok");
+}
 
 function totals(items) {
   return {
@@ -288,23 +347,27 @@ function currentDoc() {
   return { info: { ...draft.info }, items: draft.items.map(it => ({ ...it })), totals: totals(draft.items) };
 }
 
-function saveDoc() {
-  if (!draft.items.length) return setMsg("ยังไม่มีรายการไม้", "err"), null;
-  const doc = currentDoc();
-  const now = new Date().toISOString();
-  let rec = draft.editId && history.find(h => h.id === draft.editId);
-  if (rec) {
-    Object.assign(rec, doc, { updatedAt: now });
-  } else {
-    const no = history.reduce((m, h) => Math.max(m, h.no), 0) + 1;
-    rec = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), no, createdAt: now, updatedAt: now, ...doc };
-    history.unshift(rec);
+async function saveDoc() {
+  if (!draft.items.length) return setMsg("ยังไม่มีรายการไม้", "err");
+  const btn = $("saveDoc"); btn.disabled = true; setMsg("กำลังบันทึก...");
+  try {
+    if (sb) await fetchHistory(true);  // ดึงล่าสุดก่อน เพื่อให้เลขที่ไม่ซ้ำกับเครื่องอื่น
+    const doc = currentDoc();
+    const now = new Date().toISOString();
+    const old = draft.editId && history.find(h => h.id === draft.editId);
+    const rec = old ? { ...old, ...doc, updatedAt: now } : {
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
+      no: history.reduce((m, h) => Math.max(m, h.no), 0) + 1,
+      createdAt: now, updatedAt: now, ...doc
+    };
+    await putRecords([rec]);
+    history = [rec, ...history.filter(h => h.id !== rec.id)].sort((a, b) => b.no - a.no);
+    cacheHistory();
     draft.editId = rec.id;
-  }
-  if (!saveHistory()) return setMsg("บันทึกไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล)", "err"), null;
-  saveDraft(); fillForm(); renderHistory();
-  setMsg(`บันทึกรายการเลขที่ ${rec.no} แล้ว`, "ok");
-  return rec;
+    saveDraft(); fillForm(); renderHistory();
+    setMsg(`บันทึกรายการเลขที่ ${rec.no} แล้ว` + (sb ? " (ซิงก์แล้ว)" : ""), "ok");
+  } catch (e) { setMsg("บันทึกไม่สำเร็จ: " + e.message, "err"); }
+  btn.disabled = false;
 }
 
 function newDoc(ask = true) {
@@ -373,9 +436,11 @@ $("history").addEventListener("click", e => {
   if (act === "print") return printDoc(rec);
   if (act === "del") {
     if (!confirm(`ลบรายการเลขที่ ${rec.no}? ลบแล้วกู้คืนไม่ได้`)) return;
-    history = history.filter(h => h.id !== id); saveHistory();
-    if (draft.editId === id) { draft.editId = null; saveDraft(); fillForm(); setMsg(""); }
-    return renderHistory();
+    return deleteRecord(id).then(() => {
+      history = history.filter(h => h.id !== id); cacheHistory();
+      if (draft.editId === id) { draft.editId = null; saveDraft(); fillForm(); setMsg(""); }
+      renderHistory();
+    }).catch(err => alert("ลบไม่สำเร็จ: " + err.message));
   }
   if (draft.items.length && !draft.editId && !confirm("รายการที่กำลังทำยังไม่ได้บันทึก ต้องการเปิดรายการอื่นแทน?")) return;
   draft = {
@@ -404,10 +469,12 @@ $("importFile").addEventListener("change", async e => {
     const recs = Array.isArray(data.history) ? data.history : [];
     const valid = recs.filter(r => r && r.id && r.info && Array.isArray(r.items) && r.totals);
     if (!valid.length) throw new Error("ไม่พบข้อมูลในไฟล์");
+    if (sb) await fetchHistory(true);
     const ids = new Set(history.map(h => h.id));
     const added = valid.filter(r => !ids.has(r.id));
+    if (added.length) await putRecords(added);
     history = [...history, ...added].sort((a, b) => b.no - a.no);
-    saveHistory(); renderHistory();
+    cacheHistory(); renderHistory();
     alert(`นำเข้า ${added.length} รายการ` + (valid.length - added.length ? ` (ข้าม ${valid.length - added.length} รายการที่มีอยู่แล้ว)` : ""));
   } catch (err) { alert("นำเข้าไม่สำเร็จ: " + err.message); }
 });
@@ -443,6 +510,63 @@ function renderRates() {
   const rateTable = t => `<div><h3>เรต${NAME[t]} (บาท/ลบ.ม.)</h3><table><tr><th>รอบวง (ซม.)</th><th>ราคา</th></tr>` +
     RATES[t].map(([lo, hi, p]) => `<tr><td>${lo}–${hi}</td><td>${fmt(p)}</td></tr>`).join("") + `</table></div>`;
   $("rates").innerHTML = rateTable("teak") + rateTable("padauk");
+}
+
+// ---------- เข้าสู่ระบบ / เริ่มต้น ----------
+let userEmail = "";
+function showApp(on) { $("app").classList.toggle("hidden", !on); $("loginCard").classList.toggle("hidden", on); }
+
+async function onSignedIn(session) {
+  userEmail = session.user.email || "";
+  showApp(true); $("syncBar").classList.remove("hidden");
+  $("backupNote").textContent = "ประวัติซิงก์ทุกเครื่องที่ล็อกอินบัญชีนี้ ปุ่มด้านล่างใช้สำรองเป็นไฟล์เพิ่มเติม";
+  history = load("wood-cloud-cache-v1", []); renderHistory();
+  try { await fetchHistory(); } catch (e) { return; }
+  // ย้ายประวัติเก่าที่เคยเก็บไว้ในเครื่องนี้ขึ้นระบบ (ครั้งเดียว)
+  const local = load("wood-history-v1", []);
+  if (local.length && !load("wood-migrated-v1", false)) {
+    if (confirm(`พบประวัติเก่าในเครื่องนี้ ${local.length} รายการ ต้องการอัปโหลดเข้าระบบเพื่อดูได้ทุกเครื่องไหม?`)) {
+      try {
+        const ids = new Set(history.map(h => h.id));
+        let no = history.reduce((m, h) => Math.max(m, h.no), 0);
+        const add = local.filter(h => !ids.has(h.id)).sort((a, b) => a.no - b.no).map(h => ({ ...h, no: ++no }));
+        if (add.length) await putRecords(add);
+        await fetchHistory();
+        store("wood-migrated-v1", true);
+        alert(`อัปโหลดแล้ว ${add.length} รายการ`);
+      } catch (e) { alert("อัปโหลดไม่สำเร็จ: " + e.message); }
+    } else store("wood-migrated-v1", true);
+  }
+}
+
+if (sb) {
+  showApp(false);
+  $("loginBtn").addEventListener("click", async () => {
+    const btn = $("loginBtn"); btn.disabled = true;
+    $("loginMsg").className = "msg"; $("loginMsg").textContent = "กำลังเข้าสู่ระบบ...";
+    const { error } = await sb.auth.signInWithPassword({ email: $("loginEmail").value.trim(), password: $("loginPass").value });
+    btn.disabled = false;
+    if (error) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = "เข้าสู่ระบบไม่สำเร็จ: อีเมลหรือรหัสผ่านไม่ถูกต้อง"; }
+    else $("loginMsg").textContent = "";
+  });
+  $("loginPass").addEventListener("keydown", e => { if (e.key === "Enter") $("loginBtn").click(); });
+  $("logoutBtn").addEventListener("click", async () => {
+    if (!confirm("ออกจากระบบ?")) return;
+    await sb.auth.signOut();
+  });
+  $("refreshBtn").addEventListener("click", () => fetchHistory().catch(() => {}));
+  // กลับมาที่หน้าเว็บเมื่อไร ให้ดึงประวัติล่าสุด
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && userEmail) fetchHistory(true).catch(() => {}); });
+  let signedIn = false;
+  sb.auth.onAuthStateChange((event, session) => {
+    if (session && !signedIn) { signedIn = true; setTimeout(() => onSignedIn(session), 0); }
+    else if (!session && signedIn) {
+      signedIn = false; userEmail = ""; history = []; store("wood-cloud-cache-v1", []);
+      $("syncBar").classList.add("hidden"); showApp(false); renderHistory();
+    }
+  });
+} else {
+  showApp(true);
 }
 
 renderRates(); fillForm(); render(); renderHistory();
