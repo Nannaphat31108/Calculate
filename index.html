@@ -3,16 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>คำนวณราคารับซื้อไม้</title>
+<title>รายการเสนอขายไม้</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #f6f3ee; --card: #ffffff; --text: #2b2420; --muted: #7a6d63;
-    --line: #e4ddd3; --accent: #8a5a2b; --accent-2: #b4492f; --ok: #2f7a4b; --warn: #b4492f;
+    --line: #e4ddd3; --accent: #8a5a2b; --ok: #2f7a4b; --warn: #b4492f;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #1b1714; --card: #26201c; --text: #f1ebe4; --muted: #a89a8e;
-      --line: #3a322c; --accent: #d79a5c; --accent-2: #e07a5f; --ok: #6cc08b; --warn: #e07a5f; }
+      --line: #3a322c; --accent: #d79a5c; --ok: #6cc08b; --warn: #e07a5f; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
@@ -21,20 +21,30 @@
   h1 { font-size: 1.6rem; margin: 0 0 4px; }
   .sub { color: var(--muted); margin: 0 0 20px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; margin-bottom: 18px; }
-  .card h2 { font-size: 1.15rem; margin: 0 0 12px; }
+  .card h2 { font-size: 1.15rem; margin: 0; }
+  .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
   .tabs { display: flex; gap: 8px; margin-bottom: 14px; }
   .tab { flex: 1; padding: 12px; border-radius: 10px; border: 2px solid var(--line); background: transparent;
     color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
   .tab.active { border-color: var(--accent); background: var(--accent); color: #fff; }
   .row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .grid2 .full { grid-column: 1 / -1; }
+  .row > *, .grid2 > *, .actions > * { min-width: 0; }
+  .actions button { white-space: normal; padding-left: 8px; padding-right: 8px; }
   label { display: block; font-size: .9rem; color: var(--muted); margin-bottom: 4px; }
-  input { width: 100%; padding: 11px 12px; font: inherit; border: 1px solid var(--line); border-radius: 10px;
+  input, textarea { width: 100%; padding: 11px 12px; font: inherit; border: 1px solid var(--line); border-radius: 10px;
     background: var(--bg); color: var(--text); }
-  input:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  textarea { resize: vertical; min-height: 56px; }
+  input:focus, textarea:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  button { font: inherit; cursor: pointer; }
   button.primary { padding: 11px 18px; border: 0; border-radius: 10px; background: var(--accent); color: #fff;
-    font: inherit; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    font-weight: 600; white-space: nowrap; }
+  button.outline { padding: 11px 18px; border: 2px solid var(--accent); border-radius: 10px; background: transparent;
+    color: var(--accent); font-weight: 600; white-space: nowrap; }
   button.ghost { padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent;
-    color: var(--muted); font: inherit; font-size: .9rem; cursor: pointer; }
+    color: var(--muted); font-size: .9rem; }
+  button.ghost.danger { color: var(--warn); }
   .preview { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--bg); font-size: .95rem; min-height: 48px; }
   .preview.err { color: var(--warn); }
   table { width: 100%; border-collapse: collapse; font-size: .95rem; }
@@ -45,23 +55,58 @@
   .total { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 8px;
     margin-top: 14px; padding-top: 14px; border-top: 2px solid var(--line); }
   .total .big { font-size: 1.8rem; font-weight: 700; color: var(--accent); }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
   .muted { color: var(--muted); }
   .empty { color: var(--muted); text-align: center; padding: 18px 0; }
-  .badge { display: inline-block; font-size: .75rem; padding: 1px 6px; border-radius: 6px; background: var(--line); color: var(--muted); margin-left: 4px; }
+  .msg { margin-top: 10px; font-size: .95rem; min-height: 1.4em; }
+  .msg.ok { color: var(--ok); } .msg.err { color: var(--warn); }
+  .editing { display: none; background: var(--bg); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; font-size: .95rem; }
+  .editing.show { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .rec { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; }
+  .rec-top { display: flex; justify-content: space-between; gap: 10px; }
+  .rec-title { font-weight: 600; }
+  .rec-price { font-weight: 700; color: var(--accent); white-space: nowrap; }
+  .rec-meta { font-size: .85rem; color: var(--muted); }
+  .rec-btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .backup { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); align-items: center; }
   details summary { cursor: pointer; font-weight: 600; }
   .rates { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 12px; }
   .rates h3 { font-size: 1rem; margin: 0 0 6px; }
   .rates td, .rates th { text-align: left; }
   .rates td:last-child, .rates th:last-child { text-align: right; }
+  #printArea { display: none; }
   @media (max-width: 640px) {
     .row { grid-template-columns: 1fr 1fr; }
     .row button.primary { grid-column: 1 / -1; }
   }
+
+  /* ---------- ใบรายการสำหรับพิมพ์ ---------- */
+  @page { size: A4; margin: 14mm; }
+  @media print {
+    body { background: #fff; color: #000; font-size: 13pt; }
+    .wrap { display: none; }
+    #printArea { display: block; }
+  }
+  .doc { color: #000; background: #fff; }
+  .doc h1 { text-align: center; font-size: 20pt; margin: 0 0 2px; }
+  .doc .docno { text-align: center; margin-bottom: 14px; }
+  .doc .info { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px; margin-bottom: 12px; }
+  .doc .info .full { grid-column: 1 / -1; }
+  .doc .info b { font-weight: 600; }
+  .doc table { font-size: 12pt; }
+  .doc th, .doc td { border: 1px solid #555; padding: 5px 6px; color: #000; }
+  .doc th { background: #eee; text-align: center; font-size: 11pt; }
+  .doc td.c { text-align: center; }
+  .doc tfoot td { font-weight: 700; }
+  .doc .grand { text-align: right; font-size: 15pt; font-weight: 700; margin-top: 10px; }
+  .doc .formula { font-size: 10pt; margin-top: 6px; }
+  .doc .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 50px; text-align: center; }
+  .doc .sign div { border-top: 1px dotted #000; padding-top: 4px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <h1>คำนวณราคารับซื้อไม้สัก / ไม้ประดู่</h1>
+  <h1>รายการเสนอขายไม้สัก / ไม้ประดู่</h1>
   <p class="sub">ปริมาตร = รอบวง × รอบวง × ความยาว × 7.96 ÷ 1,000,000 (ลบ.ม.)<br>
     ราคา = ปริมาตร × จำนวนต้น × เรตราคา (บาท/ลบ.ม.)</p>
 
@@ -80,9 +125,18 @@
   </div>
 
   <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h2 style="margin:0">รายการที่รับซื้อ</h2>
-      <button class="ghost" id="clear">ล้างทั้งหมด</button>
+    <div class="head">
+      <h2>รายการเสนอขาย</h2>
+      <button class="ghost" id="newDoc">เริ่มรายการใหม่</button>
+    </div>
+    <div class="editing" id="editing"></div>
+    <div class="grid2">
+      <div class="full"><label for="f_to">เสนอขายให้ (ผู้รับซื้อ / สถานที่)</label><input id="f_to" placeholder="เช่น โรงเลื่อย ก. จ.แพร่"></div>
+      <div><label for="f_garden">ชื่อสวน</label><input id="f_garden" placeholder="เช่น สวนบ้านนา"></div>
+      <div><label for="f_owner">เจ้าของ</label><input id="f_owner" placeholder="ชื่อเจ้าของไม้"></div>
+      <div><label for="f_phone">เบอร์โทร</label><input id="f_phone" type="tel"></div>
+      <div><label for="f_date">วันที่</label><input id="f_date" type="date"></div>
+      <div class="full"><label for="f_note">หมายเหตุ</label><textarea id="f_note" placeholder="เช่น ที่ตั้งสวน เงื่อนไขการขาย"></textarea></div>
     </div>
     <div class="scroll">
       <table>
@@ -91,8 +145,25 @@
       </table>
     </div>
     <div class="total">
-      <span class="muted" id="sumInfo">0 ต้น · 0.000 ลบ.ม.</span>
+      <span class="muted" id="sumInfo">0 ต้น · 0.00 ลบ.ม.</span>
       <span>รวมทั้งหมด <span class="big" id="sum">0</span> บาท</span>
+    </div>
+    <div class="actions">
+      <button class="primary" id="saveDoc">💾 บันทึกลงประวัติ</button>
+      <button class="outline" id="printDoc">🖨 พิมพ์ใบรายการ</button>
+    </div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <div class="head"><h2>ประวัติรายการเสนอขาย</h2><span class="muted" id="histCount"></span></div>
+    <input id="search" placeholder="ค้นหา: ผู้รับซื้อ สวน เจ้าของ เบอร์ หรือเลขที่">
+    <div id="history" style="margin-top:12px"></div>
+    <div class="backup">
+      <span class="muted" style="font-size:.85rem;flex-basis:100%">ประวัติเก็บไว้ในเครื่องนี้เท่านั้น ควรสำรองไฟล์เก็บไว้เป็นระยะ</span>
+      <button class="ghost" id="exportBtn">⬇ สำรองข้อมูล (ดาวน์โหลดไฟล์)</button>
+      <button class="ghost" id="importBtn">⬆ นำเข้าไฟล์สำรอง</button>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
   </div>
 
@@ -102,14 +173,16 @@
       <div class="rates" id="rates"></div>
       <p class="muted" style="font-size:.9rem;margin-bottom:0">
         ตัวอย่าง: ไม้สักรอบวง 100 ซม. ยาว 6.2 ม. 32 ต้น<br>
-        100 × 100 × 6.2 × 7.96 ÷ 1,000,000 = 0.493 ลบ.ม. × 32 ต้น = 15.79 ลบ.ม. × 7,000 = 110,548.48 บาท
+        100 × 100 × 6.2 × 7.96 ÷ 1,000,000 = 0.4935 ลบ.ม. × 32 ต้น = 15.79 ลบ.ม. × 7,000 = 110,548.48 บาท
       </p>
     </details>
   </div>
 </div>
 
+<div id="printArea"></div>
+
 <script>
-// เรตราคา: [รอบวงต่ำสุด, รอบวงสูงสุด, บาท]
+// เรตราคา: [รอบวงต่ำสุด, รอบวงสูงสุด, บาท/ลบ.ม.]
 const RATES = {
   teak: [
     [40, 49, 2700], [50, 79, 3700], [80, 89, 4700], [90, 99, 5700],
@@ -144,13 +217,34 @@ function calc(type, g, len, qty) {
   return { type, g, len, qty, rate, vol, volTotal, total: volTotal * rate };
 }
 
-const fmt = n => n.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+const fmt = n => Number(n).toLocaleString("th-TH", { maximumFractionDigits: 2 });
+const money = n => Number(n).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const $ = id => document.getElementById(id);
-let type = "teak";
-let items = [];
-try { items = JSON.parse(localStorage.getItem("wood-items-v2") || "[]"); } catch (e) {}
-function save() { try { localStorage.setItem("wood-items-v2", JSON.stringify(items)); } catch (e) {} }
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const thaiDate = s => s ? new Date(s + "T00:00:00").toLocaleDateString("th-TH", { day: "numeric", month: "long", year: "numeric" }) : "";
+const FIELDS = ["to", "garden", "owner", "phone", "date", "note"];
 
+// ---------- เก็บข้อมูลในเครื่อง ----------
+function load(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch (e) { return fallback; } }
+function store(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); return true; } catch (e) { return false; } }
+
+let type = "teak";
+let draft = load("wood-draft-v3", null);
+if (!draft) draft = { editId: null, info: { date: today() }, items: load("wood-items-v2", []) };
+let history = load("wood-history-v1", []);
+function saveDraft() { store("wood-draft-v3", draft); }
+function saveHistory() { return store("wood-history-v1", history); }
+
+function totals(items) {
+  return {
+    trees: items.reduce((s, it) => s + it.qty, 0),
+    volume: items.reduce((s, it) => s + it.volTotal, 0),
+    price: items.reduce((s, it) => s + it.total, 0)
+  };
+}
+
+// ---------- เครื่องคิดราคา ----------
 function preview() {
   const g = parseFloat($("girth").value);
   const len = parseFloat($("len").value);
@@ -165,23 +259,185 @@ function preview() {
   return r;
 }
 
+// ---------- รายการเสนอขาย ----------
+function fillForm() {
+  FIELDS.forEach(f => { $("f_" + f).value = draft.info[f] || ""; });
+  const ed = $("editing");
+  const rec = draft.editId && history.find(h => h.id === draft.editId);
+  if (rec) {
+    ed.className = "editing show";
+    ed.innerHTML = `<span>กำลังแก้ไขรายการเลขที่ <b>${rec.no}</b> (บันทึกแล้วจะทับของเดิม)</span>`;
+  } else { ed.className = "editing"; ed.innerHTML = ""; draft.editId = null; }
+}
 function render() {
   const tb = $("list");
-  if (!items.length) {
-    tb.innerHTML = `<tr><td colspan="9" class="empty">ยังไม่มีรายการ</td></tr>`;
-  } else {
-    tb.innerHTML = items.map((it, i) => `<tr>
+  const items = draft.items;
+  tb.innerHTML = !items.length ? `<tr><td colspan="9" class="empty">ยังไม่มีรายการ</td></tr>` :
+    items.map((it, i) => `<tr>
       <td>${NAME[it.type]}</td><td>${fmt(it.g)} ซม.</td><td>${fmt(it.len)}</td>
       <td>${it.vol.toFixed(4)}</td><td>${it.qty}</td><td>${it.volTotal.toFixed(2)}</td>
       <td>${fmt(it.rate)}</td><td><b>${fmt(it.total)}</b></td>
       <td><button class="ghost" data-del="${i}" aria-label="ลบ">✕</button></td></tr>`).join("");
-  }
-  const sum = items.reduce((s, it) => s + it.total, 0);
-  const n = items.reduce((s, it) => s + it.qty, 0);
-  const v = items.reduce((s, it) => s + it.volTotal, 0);
-  $("sum").textContent = fmt(sum);
-  $("sumInfo").textContent = `${n} ต้น · ${v.toFixed(2)} ลบ.ม.`;
+  const t = totals(items);
+  $("sum").textContent = fmt(t.price);
+  $("sumInfo").textContent = `${t.trees} ต้น · ${t.volume.toFixed(2)} ลบ.ม.`;
 }
+function setMsg(text, cls) { const m = $("msg"); m.textContent = text; m.className = "msg " + (cls || ""); }
+
+function currentDoc() {
+  return { info: { ...draft.info }, items: draft.items.map(it => ({ ...it })), totals: totals(draft.items) };
+}
+
+function saveDoc() {
+  if (!draft.items.length) return setMsg("ยังไม่มีรายการไม้", "err"), null;
+  const doc = currentDoc();
+  const now = new Date().toISOString();
+  let rec = draft.editId && history.find(h => h.id === draft.editId);
+  if (rec) {
+    Object.assign(rec, doc, { updatedAt: now });
+  } else {
+    const no = history.reduce((m, h) => Math.max(m, h.no), 0) + 1;
+    rec = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), no, createdAt: now, updatedAt: now, ...doc };
+    history.unshift(rec);
+    draft.editId = rec.id;
+  }
+  if (!saveHistory()) return setMsg("บันทึกไม่สำเร็จ (เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล)", "err"), null;
+  saveDraft(); fillForm(); renderHistory();
+  setMsg(`บันทึกรายการเลขที่ ${rec.no} แล้ว`, "ok");
+  return rec;
+}
+
+function newDoc(ask = true) {
+  if (ask && draft.items.length && !draft.editId && !confirm("รายการนี้ยังไม่ได้บันทึก ต้องการเริ่มรายการใหม่?")) return;
+  draft = { editId: null, info: { date: today() }, items: [] };
+  saveDraft(); fillForm(); render(); setMsg("");
+}
+
+// ---------- พิมพ์ใบรายการ ----------
+function printDoc(doc) {
+  const i = doc.info, t = doc.totals || totals(doc.items);
+  const row = (label, val, full) => val ? `<div class="${full ? "full" : ""}"><b>${label}:</b> ${esc(val)}</div>` : "";
+  $("printArea").innerHTML = `<div class="doc">
+    <h1>ใบรายการเสนอขายไม้</h1>
+    <div class="docno">${doc.no ? `เลขที่ ${doc.no} · ` : ""}วันที่ ${esc(thaiDate(i.date) || thaiDate(today()))}</div>
+    <div class="info">
+      ${row("เสนอขายให้", i.to, true)}
+      ${row("ชื่อสวน", i.garden)}${row("เจ้าของ", i.owner)}
+      ${row("เบอร์โทร", i.phone)}
+      ${row("หมายเหตุ", i.note, true)}
+    </div>
+    <table>
+      <thead><tr><th>ลำดับ</th><th>ชนิดไม้</th><th>รอบวง (ซม.)</th><th>ยาว (ม.)</th><th>ปริมาตร/ต้น (ลบ.ม.)</th>
+        <th>จำนวน</th><th>ปริมาตรรวม (ลบ.ม.)</th><th>เรต (บาท/ลบ.ม.)</th><th>จำนวนเงิน (บาท)</th></tr></thead>
+      <tbody>${doc.items.map((it, n) => `<tr><td class="c">${n + 1}</td><td style="text-align:left">${NAME[it.type]}</td>
+        <td>${fmt(it.g)}</td><td>${fmt(it.len)}</td><td>${it.vol.toFixed(4)}</td><td>${it.qty}</td>
+        <td>${it.volTotal.toFixed(2)}</td><td>${fmt(it.rate)}</td><td>${money(it.total)}</td></tr>`).join("")}</tbody>
+      <tfoot><tr><td colspan="5" style="text-align:right">รวม</td><td>${t.trees}</td><td>${t.volume.toFixed(2)}</td><td></td><td>${money(t.price)}</td></tr></tfoot>
+    </table>
+    <div class="grand">รวมเป็นเงินทั้งสิ้น ${money(t.price)} บาท</div>
+    <div class="formula">ปริมาตร = รอบวง × รอบวง × ความยาว × 7.96 ÷ 1,000,000</div>
+    <div class="sign"><div>ผู้เสนอขาย</div><div>ผู้รับซื้อ</div></div>
+  </div>`;
+  window.print();
+}
+
+// ---------- ประวัติ ----------
+function renderHistory() {
+  const q = $("search").value.trim().toLowerCase();
+  const list = history.filter(h => !q || [h.no, h.info.to, h.info.garden, h.info.owner, h.info.phone, h.info.note]
+    .some(v => String(v || "").toLowerCase().includes(q)));
+  $("histCount").textContent = history.length ? `${history.length} รายการ` : "";
+  $("history").innerHTML = !list.length ? `<div class="empty">${history.length ? "ไม่พบรายการที่ค้นหา" : "ยังไม่มีประวัติ"}</div>` :
+    list.map(h => {
+      const title = [h.info.garden, h.info.owner].filter(Boolean).map(esc).join(" · ") || '<span class="muted">ไม่ระบุสวน/เจ้าของ</span>';
+      return `<div class="rec" data-id="${h.id}">
+        <div class="rec-top">
+          <div><div class="rec-title">#${h.no} ${title}</div>
+            <div class="rec-meta">${h.info.to ? "เสนอขายให้ " + esc(h.info.to) + " · " : ""}${esc(thaiDate(h.info.date))}</div>
+            <div class="rec-meta">${h.totals.trees} ต้น · ${h.totals.volume.toFixed(2)} ลบ.ม.</div></div>
+          <div class="rec-price">${fmt(h.totals.price)} ฿</div>
+        </div>
+        <div class="rec-btns">
+          <button class="ghost" data-act="open">✏️ เปิด/แก้ไข</button>
+          <button class="ghost" data-act="copy">📄 ทำสำเนา</button>
+          <button class="ghost" data-act="print">🖨 พิมพ์</button>
+          <button class="ghost danger" data-act="del">ลบ</button>
+        </div></div>`;
+    }).join("");
+}
+
+$("history").addEventListener("click", e => {
+  const act = e.target.dataset.act; if (!act) return;
+  const id = e.target.closest(".rec").dataset.id;
+  const rec = history.find(h => h.id === id); if (!rec) return;
+  if (act === "print") return printDoc(rec);
+  if (act === "del") {
+    if (!confirm(`ลบรายการเลขที่ ${rec.no}? ลบแล้วกู้คืนไม่ได้`)) return;
+    history = history.filter(h => h.id !== id); saveHistory();
+    if (draft.editId === id) { draft.editId = null; saveDraft(); fillForm(); setMsg(""); }
+    return renderHistory();
+  }
+  if (draft.items.length && !draft.editId && !confirm("รายการที่กำลังทำยังไม่ได้บันทึก ต้องการเปิดรายการอื่นแทน?")) return;
+  draft = {
+    editId: act === "open" ? id : null,
+    info: act === "open" ? { ...rec.info } : { ...rec.info, date: today() },
+    items: rec.items.map(it => ({ ...it }))
+  };
+  saveDraft(); fillForm(); render();
+  setMsg(act === "open" ? `เปิดรายการเลขที่ ${rec.no}` : `ทำสำเนาจากเลขที่ ${rec.no} แล้ว (บันทึกจะได้เลขที่ใหม่)`, "ok");
+  window.scrollTo({ top: $("f_to").closest(".card").offsetTop - 10, behavior: "smooth" });
+});
+$("search").addEventListener("input", renderHistory);
+
+// ---------- สำรอง / นำเข้า ----------
+$("exportBtn").addEventListener("click", () => {
+  const blob = new Blob([JSON.stringify({ app: "wood-offer", version: 1, exportedAt: new Date().toISOString(), history }, null, 1)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `สำรองรายการเสนอขาย-${today()}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$("importBtn").addEventListener("click", () => $("importFile").click());
+$("importFile").addEventListener("change", async e => {
+  const file = e.target.files[0]; e.target.value = ""; if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const recs = Array.isArray(data.history) ? data.history : [];
+    const valid = recs.filter(r => r && r.id && r.info && Array.isArray(r.items) && r.totals);
+    if (!valid.length) throw new Error("ไม่พบข้อมูลในไฟล์");
+    const ids = new Set(history.map(h => h.id));
+    const added = valid.filter(r => !ids.has(r.id));
+    history = [...history, ...added].sort((a, b) => b.no - a.no);
+    saveHistory(); renderHistory();
+    alert(`นำเข้า ${added.length} รายการ` + (valid.length - added.length ? ` (ข้าม ${valid.length - added.length} รายการที่มีอยู่แล้ว)` : ""));
+  } catch (err) { alert("นำเข้าไม่สำเร็จ: " + err.message); }
+});
+
+// ---------- ผูกปุ่ม ----------
+document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
+  b.classList.add("active"); type = b.dataset.type; preview(); $("girth").focus();
+}));
+["girth", "len", "qty"].forEach(id => $(id).addEventListener("input", preview));
+function add() {
+  const r = preview();
+  if (!r) return;
+  draft.items.push(r); saveDraft(); render(); setMsg("");
+  $("girth").value = ""; $("qty").value = 1; preview(); $("girth").focus();
+}
+$("add").addEventListener("click", add);
+["girth", "len", "qty"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") add(); }));
+$("list").addEventListener("click", e => {
+  const i = e.target.dataset.del;
+  if (i != null) { draft.items.splice(+i, 1); saveDraft(); render(); }
+});
+FIELDS.forEach(f => $("f_" + f).addEventListener("input", e => { draft.info[f] = e.target.value; saveDraft(); }));
+$("saveDoc").addEventListener("click", saveDoc);
+$("printDoc").addEventListener("click", () => {
+  if (!draft.items.length) return setMsg("ยังไม่มีรายการไม้", "err");
+  const rec = draft.editId && history.find(h => h.id === draft.editId);
+  printDoc({ ...currentDoc(), no: rec ? rec.no : null });
+});
+$("newDoc").addEventListener("click", () => newDoc(true));
 
 function renderRates() {
   const rateTable = t => `<div><h3>เรต${NAME[t]} (บาท/ลบ.ม.)</h3><table><tr><th>รอบวง (ซม.)</th><th>ราคา</th></tr>` +
@@ -189,28 +445,7 @@ function renderRates() {
   $("rates").innerHTML = rateTable("teak") + rateTable("padauk");
 }
 
-document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => {
-  document.querySelectorAll(".tab").forEach(x => x.classList.remove("active"));
-  b.classList.add("active"); type = b.dataset.type; preview(); $("girth").focus();
-}));
-$("girth").addEventListener("input", preview);
-$("qty").addEventListener("input", preview);
-$("len").addEventListener("input", preview);
-function add() {
-  const r = preview();
-  if (!r) return;
-  items.push(r); save(); render();
-  $("girth").value = ""; $("qty").value = 1; preview(); $("girth").focus();
-}
-$("add").addEventListener("click", add);
-[$("girth"), $("len"), $("qty")].forEach(el => el.addEventListener("keydown", e => { if (e.key === "Enter") add(); }));
-$("list").addEventListener("click", e => {
-  const i = e.target.dataset.del;
-  if (i != null) { items.splice(+i, 1); save(); render(); }
-});
-$("clear").addEventListener("click", () => { if (items.length && confirm("ล้างรายการทั้งหมด?")) { items = []; save(); render(); } });
-
-renderRates(); render();
+renderRates(); fillForm(); render(); renderHistory();
 </script>
 </body>
 </html>
