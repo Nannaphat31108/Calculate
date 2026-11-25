@@ -116,7 +116,7 @@
   <div class="card login hidden" id="loginCard">
     <h2 style="margin-bottom:6px">เข้าสู่ระบบ</h2>
     <p class="muted" style="margin-top:0;font-size:.95rem">ล็อกอินบัญชีเดียวกันทุกเครื่อง เพื่อดูประวัติร่วมกัน</p>
-    <label for="loginEmail">อีเมล</label><input id="loginEmail" type="email" autocomplete="username">
+    <label for="loginUser">ชื่อผู้ใช้</label><input id="loginUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ภาษาอังกฤษหรือตัวเลข">
     <label for="loginPass">รหัสผ่าน</label><input id="loginPass" type="password" autocomplete="current-password">
     <button class="primary" id="loginBtn">เข้าสู่ระบบ</button>
     <div class="msg" id="loginMsg"></div>
@@ -210,6 +210,11 @@
 // ถ้าเว้นว่างไว้ ประวัติจะเก็บในเครื่องนี้เท่านั้น
 const SUPABASE_URL = "";
 const SUPABASE_ANON_KEY = "";
+// Supabase ต้องใช้อีเมลในการล็อกอิน เว็บจึงแปลงชื่อผู้ใช้เป็น "ชื่อผู้ใช้@wood.local" ให้เอง
+// ตอนสร้างผู้ใช้ใน Supabase ให้ใส่อีเมลเป็น เช่น somchai@wood.local
+const USERNAME_DOMAIN = "wood.local";
+const toLoginEmail = u => (u = u.trim().toLowerCase()).includes("@") ? u : `${u}@${USERNAME_DOMAIN}`;
+const toUsername = e => String(e || "").replace("@" + USERNAME_DOMAIN, "");
 
 // เรตราคา: [รอบวงต่ำสุด, รอบวงสูงสุด, บาท/ลบ.ม.]
 const RATES = {
@@ -292,7 +297,7 @@ async function fetchHistory(quiet) {
   const { data, error } = await sb.from("offers").select("*").order("no", { ascending: false });
   if (error) { setSync("โหลดไม่สำเร็จ: " + error.message, "err"); throw new Error(error.message); }
   history = data.map(fromRow); cacheHistory(); renderHistory();
-  setSync(`☁️ ซิงก์แล้ว · ${userEmail}`, "ok");
+  setSync(`☁️ ซิงก์แล้ว · ผู้ใช้ ${toUsername(userEmail)}`, "ok");
 }
 
 function totals(items) {
@@ -544,9 +549,11 @@ if (sb) {
   $("loginBtn").addEventListener("click", async () => {
     const btn = $("loginBtn"); btn.disabled = true;
     $("loginMsg").className = "msg"; $("loginMsg").textContent = "กำลังเข้าสู่ระบบ...";
-    const { error } = await sb.auth.signInWithPassword({ email: $("loginEmail").value.trim(), password: $("loginPass").value });
+    const user = $("loginUser").value.trim();
+    if (!user || !$("loginPass").value) { btn.disabled = false; $("loginMsg").className = "msg err"; $("loginMsg").textContent = "กรุณากรอกชื่อผู้ใช้และรหัสผ่าน"; return; }
+    const { error } = await sb.auth.signInWithPassword({ email: toLoginEmail(user), password: $("loginPass").value });
     btn.disabled = false;
-    if (error) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = "เข้าสู่ระบบไม่สำเร็จ: อีเมลหรือรหัสผ่านไม่ถูกต้อง"; }
+    if (error) { $("loginMsg").className = "msg err"; $("loginMsg").textContent = "เข้าสู่ระบบไม่สำเร็จ: ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"; }
     else $("loginMsg").textContent = "";
   });
   $("loginPass").addEventListener("keydown", e => { if (e.key === "Enter") $("loginBtn").click(); });
