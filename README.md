@@ -8,15 +8,17 @@
 
 ## ขึ้น Render
 
-1. Render Dashboard → **+ New** → **Blueprint** → เลือก repo นี้และ branch ที่ต้องการ
-2. Render จะสร้างเว็บ (`wood-price`) และฐานข้อมูล (`wood-price-db`) ตามไฟล์ `render.yaml`
-3. ตั้งค่า `APP_PASSWORD` เป็นรหัสผ่านสำหรับเข้าเว็บ (ตอนเข้าเว็บ ช่องชื่อผู้ใช้จะใส่อะไรก็ได้)
+1. เตรียมฐานข้อมูล PostgreSQL 1 ตัว (ฐานข้อมูลที่มีอยู่แล้วบน Render หรือ Neon / Supabase) แล้วคัดลอก connection string
+2. Render Dashboard → **+ New** → **Blueprint** → เลือก repo นี้และ branch ที่ต้องการ
+3. กรอก `DATABASE_URL` (connection string จากข้อ 1) และ `APP_PASSWORD` (รหัสผ่านเข้าเว็บ ตอนเข้าเว็บ ช่องชื่อผู้ใช้จะใส่อะไรก็ได้)
+
+เว็บจะสร้างตาราง `bills` และ `bill_items` ให้เองตอนเริ่มทำงาน
 
 ## ตัวแปรที่ต้องตั้ง
 
 | ชื่อ | ความหมาย |
 | --- | --- |
-| `DATABASE_URL` | ที่อยู่ฐานข้อมูล PostgreSQL (Blueprint ตั้งให้เอง) |
+| `DATABASE_URL` | ที่อยู่ฐานข้อมูล PostgreSQL (connection string) |
 | `APP_PASSWORD` | รหัสผ่านเข้าเว็บ ถ้าไม่ตั้ง ใครมีลิงก์ก็เข้าได้ |
 | `DB_SSL` | `true`/`false` บังคับเปิดหรือปิด SSL (ปกติไม่ต้องตั้ง) |
 
