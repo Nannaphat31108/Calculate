@@ -1,15 +1,6 @@
 services:
   - type: web
     name: wood-price
-    runtime: node
-    plan: free
-    region: singapore
-    buildCommand: npm install
-    startCommand: npm start
-    envVars:
-      # ใส่ที่อยู่ฐานข้อมูล PostgreSQL เอง (Render ให้ฐานข้อมูลฟรีได้บัญชีละ 1 ตัว)
-      # จะใช้ฐานข้อมูล Render ที่มีอยู่แล้ว หรือ Neon / Supabase ก็ได้
-      - key: DATABASE_URL
-        sync: false
-      - key: APP_PASSWORD
-        sync: false
+    runtime: static
+    buildCommand: echo done
+    staticPublishPath: ./
