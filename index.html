@@ -119,7 +119,7 @@
       <button class="tab" data-mode="signup">สร้างบัญชีใหม่</button>
     </div>
     <p class="muted" style="margin-top:0;font-size:.95rem" id="loginHint">ใช้ชื่อผู้ใช้และรหัสผ่านเดิมได้ทุกเครื่อง ประวัติจะตามไปด้วย</p>
-    <label for="loginUser">ชื่อผู้ใช้</label><input id="loginUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ภาษาอังกฤษหรือตัวเลข">
+    <label for="loginUser">ชื่อผู้ใช้</label><input id="loginUser" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="ชื่ออะไรก็ได้">
     <label for="loginPass">รหัสผ่าน</label><input id="loginPass" type="password" autocomplete="current-password">
     <div id="pass2Wrap" class="hidden"><label for="loginPass2">ยืนยันรหัสผ่าน</label><input id="loginPass2" type="password" autocomplete="new-password"></div>
     <button class="primary" id="loginBtn">เข้าสู่ระบบ</button>
@@ -207,18 +207,12 @@
 </div>
 <div id="printArea"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.3/dist/umd/supabase.js"></script>
 <script>
 // ---------- ตั้งค่าการซิงก์ข้ามเครื่อง (Supabase) ----------
-// ใส่ Project URL และ anon public key จาก Supabase > Project Settings > API
+// บัญชีผู้ใช้และประวัติเก็บในตารางของเราเอง (ดู supabase.sql) ใช้ชื่อผู้ใช้ + รหัสผ่าน ไม่ใช้อีเมล
 // ถ้าเว้นว่างไว้ ประวัติจะเก็บในเครื่องนี้เท่านั้น
 const SUPABASE_URL = "https://bgdjrviiqukpqbchefre.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_36uuFJUTNwoyHrtOoZ44rA_tVj7lWpT";
-// Supabase ต้องใช้อีเมลในการล็อกอิน เว็บจึงแปลงชื่อผู้ใช้เป็น "ชื่อผู้ใช้@wood.local" ให้เอง
-// ตอนสร้างผู้ใช้ใน Supabase ให้ใส่อีเมลเป็น เช่น somchai@wood.local
-const USERNAME_DOMAIN = "wood.local";
-const toLoginEmail = u => (u = u.trim().toLowerCase()).includes("@") ? u : `${u}@${USERNAME_DOMAIN}`;
-const toUsername = e => String(e || "").replace("@" + USERNAME_DOMAIN, "");
+const SUPABASE_KEY = "sb_publishable_36uuFJUTNwoyHrtOoZ44rA_tVj7lWpT";
 
 // เรตราคา: [รอบวงต่ำสุด, รอบวงสูงสุด, บาท/ลบ.ม.]
 const RATES = {
@@ -274,34 +268,58 @@ let history = load("wood-history-v1", []);
 function saveDraft() { store("wood-draft-v3", draft); }
 
 // ---------- ที่เก็บประวัติ: ในเครื่อง หรือ Supabase ----------
-let sb = null;
-if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-  if (window.supabase) sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-  else alert("โหลดระบบซิงก์ไม่ได้ ตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้าใหม่");
-}
-const HKEY = () => sb ? "wood-cloud-cache-v1" : "wood-history-v1";
+const cloud = !!(SUPABASE_URL && SUPABASE_KEY);
+let session = load("wood-session-v1", null);  // { token, username }
+const HKEY = () => cloud ? "wood-cloud-cache-v1" : "wood-history-v1";
 function cacheHistory() { store(HKEY(), history); }
 const toRow = h => ({ id: h.id, no: h.no, info: h.info, items: h.items, totals: h.totals, created_at: h.createdAt, updated_at: h.updatedAt });
 const fromRow = r => ({ id: r.id, no: r.no, info: r.info || {}, items: r.items || [], totals: r.totals || {}, createdAt: r.created_at, updatedAt: r.updated_at });
 
+const ERRORS = {
+  USERNAME_TAKEN: "ชื่อผู้ใช้นี้มีคนใช้แล้ว ลองชื่ออื่น",
+  BAD_LOGIN: "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง",
+  BAD_USERNAME: "ชื่อผู้ใช้ต้องยาว 1–50 ตัวอักษร",
+  SHORT_PASSWORD: "รหัสผ่านต้องยาวอย่างน้อย 4 ตัว",
+  BAD_SESSION: "หมดเวลาเข้าสู่ระบบ กรุณาเข้าสู่ระบบใหม่"
+};
+// เรียกฟังก์ชันในฐานข้อมูล (Supabase RPC)
+async function rpc(fn, args) {
+  let res;
+  try {
+    res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/${fn}`, {
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify(args)
+    });
+  } catch (e) { throw new Error("เชื่อมต่ออินเทอร์เน็ตไม่ได้"); }
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const code = (data && data.message) || "";
+    const err = new Error(ERRORS[code] || (res.status === 404 ? "ฐานข้อมูลยังไม่ได้ตั้งค่า (ยังไม่ได้รัน supabase.sql)" : "เกิดข้อผิดพลาด: " + code));
+    err.code = code;
+    if (code === "BAD_SESSION") setTimeout(() => signOut(false), 0);
+    throw err;
+  }
+  return data;
+}
 async function putRecords(recs) {
-  if (!sb) { history = [...recs, ...history.filter(h => !recs.some(r => r.id === h.id))]; if (!store("wood-history-v1", history)) throw new Error("เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล"); return; }
-  const { error } = await sb.from("offers").upsert(recs.map(toRow));
-  if (error) throw new Error(error.message);
+  if (!cloud) { history = [...recs, ...history.filter(h => !recs.some(r => r.id === h.id))]; if (!store("wood-history-v1", history)) throw new Error("เบราว์เซอร์ไม่อนุญาตให้เก็บข้อมูล"); return; }
+  await rpc("app_put_offers", { p_token: session.token, p_rows: recs.map(toRow) });
 }
 async function deleteRecord(id) {
-  if (!sb) return;
-  const { error } = await sb.from("offers").delete().eq("id", id);
-  if (error) throw new Error(error.message);
+  if (!cloud) return;
+  await rpc("app_delete_offer", { p_token: session.token, p_id: id });
 }
 function setSync(text, cls) { const el = $("syncSt"); el.textContent = text; el.className = "st " + (cls || ""); }
 async function fetchHistory(quiet) {
-  if (!sb) return;
+  if (!cloud || !session) return;
   if (!quiet) setSync("กำลังโหลดประวัติ...");
-  const { data, error } = await sb.from("offers").select("*").order("no", { ascending: false });
-  if (error) { setSync("โหลดไม่สำเร็จ: " + error.message, "err"); throw new Error(error.message); }
-  history = data.map(fromRow); cacheHistory(); renderHistory();
-  setSync(`☁️ ซิงก์แล้ว · ผู้ใช้ ${toUsername(userEmail)}`, "ok");
+  try {
+    const data = await rpc("app_list_offers", { p_token: session.token });
+    history = data.map(fromRow); cacheHistory(); renderHistory();
+    setSync(`☁️ ซิงก์แล้ว · ผู้ใช้ ${session.username}`, "ok");
+  } catch (e) { setSync("โหลดไม่สำเร็จ: " + e.message, "err"); throw e; }
 }
 
 function totals(items) {
@@ -360,7 +378,7 @@ async function saveDoc() {
   if (!draft.items.length) return setMsg("ยังไม่มีรายการไม้", "err");
   const btn = $("saveDoc"); btn.disabled = true; setMsg("กำลังบันทึก...");
   try {
-    if (sb) await fetchHistory(true);  // ดึงล่าสุดก่อน เพื่อให้เลขที่ไม่ซ้ำกับเครื่องอื่น
+    if (cloud) await fetchHistory(true);  // ดึงล่าสุดก่อน เพื่อให้เลขที่ไม่ซ้ำกับเครื่องอื่น
     const doc = currentDoc();
     const now = new Date().toISOString();
     const old = draft.editId && history.find(h => h.id === draft.editId);
@@ -374,7 +392,7 @@ async function saveDoc() {
     cacheHistory();
     draft.editId = rec.id;
     saveDraft(); fillForm(); renderHistory();
-    setMsg(`บันทึกรายการเลขที่ ${rec.no} แล้ว` + (sb ? " (ซิงก์แล้ว)" : ""), "ok");
+    setMsg(`บันทึกรายการเลขที่ ${rec.no} แล้ว` + (cloud ? " (ซิงก์แล้ว)" : ""), "ok");
   } catch (e) { setMsg("บันทึกไม่สำเร็จ: " + e.message, "err"); }
   btn.disabled = false;
 }
@@ -478,7 +496,7 @@ $("importFile").addEventListener("change", async e => {
     const recs = Array.isArray(data.history) ? data.history : [];
     const valid = recs.filter(r => r && r.id && r.info && Array.isArray(r.items) && r.totals);
     if (!valid.length) throw new Error("ไม่พบข้อมูลในไฟล์");
-    if (sb) await fetchHistory(true);
+    if (cloud) await fetchHistory(true);
     const ids = new Set(history.map(h => h.id));
     const added = valid.filter(r => !ids.has(r.id));
     if (added.length) await putRecords(added);
@@ -522,19 +540,17 @@ function renderRates() {
 }
 
 // ---------- เข้าสู่ระบบ / เริ่มต้น ----------
-let userEmail = "";
 function showApp(on) { $("app").classList.toggle("hidden", !on); $("loginCard").classList.toggle("hidden", on); }
 
-async function onSignedIn(session) {
-  userEmail = session.user.email || "";
+async function onSignedIn() {
   showApp(true); $("syncBar").classList.remove("hidden");
-  $("backupNote").textContent = "ประวัติซิงก์ทุกเครื่องที่ล็อกอินบัญชีนี้ ปุ่มด้านล่างใช้สำรองเป็นไฟล์เพิ่มเติม";
+  $("backupNote").textContent = "ประวัติผูกกับบัญชี เข้าสู่ระบบเครื่องไหนก็เห็น ปุ่มด้านล่างใช้สำรองเป็นไฟล์เพิ่มเติม";
   history = load("wood-cloud-cache-v1", []); renderHistory();
   try { await fetchHistory(); } catch (e) { return; }
-  // ย้ายประวัติเก่าที่เคยเก็บไว้ในเครื่องนี้ขึ้นระบบ (ครั้งเดียว)
+  // ย้ายประวัติเก่าที่เคยเก็บไว้ในเครื่องนี้ขึ้นบัญชี (ถามครั้งเดียว)
   const local = load("wood-history-v1", []);
   if (local.length && !load("wood-migrated-v1", false)) {
-    if (confirm(`พบประวัติเก่าในเครื่องนี้ ${local.length} รายการ ต้องการอัปโหลดเข้าระบบเพื่อดูได้ทุกเครื่องไหม?`)) {
+    if (confirm(`พบประวัติเก่าในเครื่องนี้ ${local.length} รายการ ต้องการย้ายเข้าบัญชี "${session.username}" เพื่อดูได้ทุกเครื่องไหม?`)) {
       try {
         const ids = new Set(history.map(h => h.id));
         let no = history.reduce((m, h) => Math.max(m, h.no), 0);
@@ -542,14 +558,22 @@ async function onSignedIn(session) {
         if (add.length) await putRecords(add);
         await fetchHistory();
         store("wood-migrated-v1", true);
-        alert(`อัปโหลดแล้ว ${add.length} รายการ`);
-      } catch (e) { alert("อัปโหลดไม่สำเร็จ: " + e.message); }
+        alert(`ย้ายแล้ว ${add.length} รายการ`);
+      } catch (e) { alert("ย้ายไม่สำเร็จ: " + e.message); }
     } else store("wood-migrated-v1", true);
   }
 }
 
-if (sb) {
-  showApp(false);
+async function signOut(callServer) {
+  if (callServer && session) rpc("app_logout", { p_token: session.token }).catch(() => {});
+  session = null; store("wood-session-v1", null);
+  history = []; store("wood-cloud-cache-v1", []);
+  draft = { editId: null, info: { date: today() }, items: [] }; saveDraft(); fillForm(); render(); setMsg("");
+  $("syncBar").classList.add("hidden"); $("loginPass").value = ""; $("loginPass2").value = "";
+  showApp(false); renderHistory();
+}
+
+if (cloud) {
   let mode = "login";
   const loginMsg = (text, cls) => { $("loginMsg").textContent = text; $("loginMsg").className = "msg " + (cls || ""); };
   document.querySelectorAll("#loginCard .tab").forEach(t => t.addEventListener("click", () => {
@@ -560,60 +584,36 @@ if (sb) {
     $("loginBtn").textContent = su ? "สร้างบัญชี" : "เข้าสู่ระบบ";
     $("loginPass").autocomplete = su ? "new-password" : "current-password";
     $("loginHint").textContent = su
-      ? "ชื่อผู้ใช้: ภาษาอังกฤษตัวเล็ก ตัวเลข . _ - ยาว 3–30 ตัว · รหัสผ่านอย่างน้อย 6 ตัว · จำไว้ให้ดี ถ้าลืมรหัสผ่านจะกู้คืนเองไม่ได้"
+      ? "ตั้งชื่อผู้ใช้อะไรก็ได้ (ภาษาไทยได้) · รหัสผ่านอย่างน้อย 4 ตัว · จำไว้ให้ดี ถ้าลืมรหัสผ่านจะกู้คืนเองไม่ได้"
       : "ใช้ชื่อผู้ใช้และรหัสผ่านเดิมได้ทุกเครื่อง ประวัติจะตามไปด้วย";
     loginMsg("");
   }));
 
   $("loginBtn").addEventListener("click", async () => {
-    const user = $("loginUser").value.trim().toLowerCase();
+    const user = $("loginUser").value.trim();
     const pass = $("loginPass").value;
     if (!user || !pass) return loginMsg("กรุณากรอกชื่อผู้ใช้และรหัสผ่าน", "err");
     if (mode === "signup") {
-      if (!/^[a-z0-9._-]{3,30}$/.test(user)) return loginMsg("ชื่อผู้ใช้ใช้ได้เฉพาะภาษาอังกฤษตัวเล็ก ตัวเลข . _ - ยาว 3–30 ตัว", "err");
-      if (pass.length < 6) return loginMsg("รหัสผ่านต้องยาวอย่างน้อย 6 ตัว", "err");
+      if (user.length > 50) return loginMsg(ERRORS.BAD_USERNAME, "err");
+      if (pass.length < 4) return loginMsg(ERRORS.SHORT_PASSWORD, "err");
       if (pass !== $("loginPass2").value) return loginMsg("ยืนยันรหัสผ่านไม่ตรงกัน", "err");
     }
     const btn = $("loginBtn"); btn.disabled = true;
     loginMsg(mode === "signup" ? "กำลังสร้างบัญชี..." : "กำลังเข้าสู่ระบบ...");
     try {
-      if (mode === "signup") {
-        const { data, error } = await sb.auth.signUp({ email: toLoginEmail(user), password: pass, options: { data: { username: user } } });
-        if (error) {
-          const m = (error.message || "").toLowerCase();
-          if (m.includes("already")) loginMsg("ชื่อผู้ใช้นี้มีคนใช้แล้ว ลองชื่ออื่น", "err");
-          else if (m.includes("password")) loginMsg("รหัสผ่านไม่ผ่านเงื่อนไข: " + error.message, "err");
-          else if (m.includes("signup") || m.includes("sign up")) loginMsg("ระบบยังปิดการสร้างบัญชีใหม่อยู่", "err");
-          else loginMsg("สร้างบัญชีไม่สำเร็จ: " + error.message, "err");
-        } else if (!data.session) {
-          // เกิดเมื่อ Supabase ยังเปิด "Confirm email" ไว้ หรือชื่อนี้ถูกใช้แล้ว
-          loginMsg("สร้างบัญชีไม่สำเร็จ: ชื่อผู้ใช้นี้อาจมีคนใช้แล้ว หรือระบบยังเปิดการยืนยันอีเมลอยู่", "err");
-        } else loginMsg("");
-      } else {
-        const { error } = await sb.auth.signInWithPassword({ email: toLoginEmail(user), password: pass });
-        if (error) loginMsg("เข้าสู่ระบบไม่สำเร็จ: ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง", "err");
-        else loginMsg("");
-      }
-    } catch (e) { loginMsg("เชื่อมต่อไม่ได้ ตรวจสอบอินเทอร์เน็ต", "err"); }
+      session = await rpc(mode === "signup" ? "app_signup" : "app_login", { p_username: user, p_password: pass });
+      store("wood-session-v1", session);
+      loginMsg(""); $("loginPass").value = ""; $("loginPass2").value = "";
+      onSignedIn();
+    } catch (e) { loginMsg((mode === "signup" ? "สร้างบัญชีไม่สำเร็จ: " : "เข้าสู่ระบบไม่สำเร็จ: ") + e.message, "err"); }
     btn.disabled = false;
   });
   ["loginUser", "loginPass", "loginPass2"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("loginBtn").click(); }));
-  $("logoutBtn").addEventListener("click", async () => {
-    if (!confirm("ออกจากระบบ?")) return;
-    await sb.auth.signOut();
-  });
+  $("logoutBtn").addEventListener("click", () => { if (confirm("ออกจากระบบ?")) signOut(true); });
   $("refreshBtn").addEventListener("click", () => fetchHistory().catch(() => {}));
   // กลับมาที่หน้าเว็บเมื่อไร ให้ดึงประวัติล่าสุด
-  document.addEventListener("visibilitychange", () => { if (!document.hidden && userEmail) fetchHistory(true).catch(() => {}); });
-  let signedIn = false;
-  sb.auth.onAuthStateChange((event, session) => {
-    if (session && !signedIn) { signedIn = true; setTimeout(() => onSignedIn(session), 0); }
-    else if (!session && signedIn) {
-      signedIn = false; userEmail = ""; history = []; store("wood-cloud-cache-v1", []);
-      draft = { editId: null, info: { date: today() }, items: [] }; saveDraft(); fillForm(); render(); setMsg("");
-      $("syncBar").classList.add("hidden"); showApp(false); renderHistory();
-    }
-  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && session) fetchHistory(true).catch(() => {}); });
+  if (session && session.token) onSignedIn(); else showApp(false);
 } else {
   showApp(true);
 }
